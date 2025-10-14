@@ -65,13 +65,14 @@ ler_elem:
 loop_leitura:
     beq $t2, $t1, print_matriz
 
-    li $v0, 5       # Lê o número
+    li $v0, 6       # Lê o número
     syscall
+    mov.s $f2, $f0
 
     la $t3, matriz
-    mul $t4, $t2, 4
+    mul $t4, $t2, 4     # deslocamento
     add $t5, $t3, $t4
-    sw $v0, 0($t5)      # Armazena número
+    s.s $f2, 0($t5)      # Armazena número
 
     addi $t2, $t2, 1        # Aumenta o contador
     j loop_leitura
@@ -95,10 +96,10 @@ print_coluna:
     mul $t8, $t7, 4
     la $t9, matriz
     add $t9, $t9, $t8
-    lw $a0, 0($t9)
+    l.s $f12, 0($t9)
 
-    # print num inteiro
-    li $v0, 1
+    # print num float
+    li $v0, 2
     syscall
 
     # print do espaço
