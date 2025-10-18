@@ -1,121 +1,413 @@
 .data
-txt_n:      .asciiz "Insira o tamanho da matriz (n x n): "
-txt_num:    .asciiz "Insira os numeros da matriz: \n"
+txt_n:        .asciiz "Insira o tamanho da matriz (n x n): "
+txt_num:      .asciiz "Insira os numeros da matriz (valores reais): \n"
+txt_head:     .asciiz "\nMatriz:\n"
+err_n:        .asciiz "Erro! O valor inserido deve estar entre 2 e 10 \n"
+msg_notinv:   .asciiz "Matriz singular: sem inversa.\n"
+espaco:       .asciiz " "
+enter:        .asciiz "\n"
 
-err_n:      .asciiz "Erro! O valor inserido deve estar entre 2 e 10 \n"
+TAM_MAX:      .word 10       # tamanho máximo da matriz
+# Variáveis temporárias (removidas duplicatas)
 
-espaco:     .asciiz " "
-enter:      .asciiz "\n"
+# Armazenamentos:
+# orig: cópia da matriz original (n x n) -> 10x10 floats = 400 bytes
+# aug: matriz aumentada (n x 2n) -> 10x20 floats = 800 bytes
+orig:         .space 400
+aug:          .space 800
 
-TAM_MAT:    .word 10    # Tamanho máximo da matriz
-
-matriz:     .space 400
-
+# Variáveis temporárias (em memória para simplicidade)
+pivot_val:    .float 0.0
+fator_val:    .float 0.0
+    
 .text
 .globl main
-
 main:
-
-ler_n:
-    # Tamanho da matriz
-    li $v0, 4       # print txt_n
+    # Ler n
+    li $v0, 4
     la $a0, txt_n
     syscall
 
-    la $a0, enter   # libera buffer
+    li $v0, 5
     syscall
+    move $t0, $v0       # $t0 = n
 
-    li $v0, 5       # leitura de n
-    syscall
-    add $t0, $v0, $zero     #t0 = n
-
-    # Verifica Erro
     li $t1, 2
-    blt $t0, $t1, erro_num      # t0 < 2
-
+    blt $t0, $t1, erro_n
     li $t1, 10
-    bgt $t0, $t1, erro_num      # t0 > 10
+    bgt $t0, $t1, erro_n
 
-    j ler_elem
+    j ler_elements
 
-erro_num:
-    li $v0, 4       # print do erro
+erro_n:
+    li $v0, 4
     la $a0, err_n
     syscall
+    j main
 
-    la $a0, enter   # libera buffer
-    syscall
-
-    j ler_n
-
-ler_elem:
-    # Elementos da matriz
-    li $v0, 4       # print txt_num
+# ======================
+# LER ELEMENTOS
+# ======================
+ler_elements:
+    li $v0, 4
     la $a0, txt_num
     syscall
 
-    la $a0, enter   # libera buffer
-    syscall
+    move $t1, $zero           # index total (0 .. n*n-1)
+    mul $t2, $t0, $t0         # t2 = total elementos = n*n
 
-    add $t2, $zero, $zero       # t2 é o contador
-    mul $t1, $t0, $t0           # t1 = total de Elementos
+ler_loop:
+    beq $t1, $t2, init_augmented
 
+    li $v0, 6            # ler float
+    syscall              # read float into $f0
 
+    # calcular row = t1 / n ; col = t1 % n
+    move $t6, $t1
+    div $t6, $t0
+    mflo $t7              # row = t7
+    mfhi $t8              # col = t8 (Note: div/mfhi use quotient and remainder; some assemblers differ)
+    # Many SPIM variants use div then mflo/mfhi; fallback: compute by loops if unsupported.
 
-loop_leitura:
-    beq $t2, $t1, print_matriz
-
-    li $v0, 5       # Lê o número
-    syscall
-
-    la $t3, matriz
-    mul $t4, $t2, 4
+    # armazenar em orig[row*n + col]
+    la $t3, orig
+    mul $t4, $t7, $t0     # t4 = row * n
+    add $t4, $t4, $t8     # t4 += col
+    sll $t4, $t4, 2       # byte offset
     add $t5, $t3, $t4
-    sw $v0, 0($t5)      # Armazena número
+    s.s $f0, 0($t5)
 
-    addi $t2, $t2, 1        # Aumenta o contador
-    j loop_leitura
+    # armazenar na parte esquerda da augmentada (cols = 2*n)
+    la $t3, aug
+    mul $t9, $t7, $t0     # t9 = row * n
+    sll $t9, $t9, 1       # t9 = row * (2*n)
+    add $t9, $t9, $t8     # t9 += col
+    sll $t9, $t9, 2       # byte offset
+    add $t9, $t3, $t9
+    s.s $f0, 0($t9)
 
-# print da matriz
-print_matriz:
-    li $t5, 0       # t5 = linha
+    addi $t1, $t1, 1
+    j ler_loop
 
-# print das linhas
-print_linha:
-    beq $t5, $t0, fim       # print completo
+# ======================
+# CRIAR MATRIZ IDENTIDADE
+# ======================
+cria_identidade:
+init_augmented:
+    # Criar identidade na parte direita da matriz aumentada (cols n..2n-1)
+    li $t1,0              # linha
+init_row:
+    beq $t1,$t0, print_header_and_matrices
+    li $t2,0             # coluna
+init_col:
+    beq $t2,$t0,next_row_init
+    # endereço para aug[row][n + col]
+    la $t3, aug
+    sll $t6, $t0, 1         # t6 = 2*n
+    mul $t4, $t1, $t6       # row * (2*n)
+    add $t4, $t4, $t0       # column offset start = n
+    add $t4, $t4, $t2       # + col
+    sll $t4, $t4, 2
+    add $t5, $t3, $t4
 
-    li $t6, 0       # t6 = coluna
+    beq $t1,$t2, diag_aug
+    li.s $f1,0.0
+    s.s $f1,0($t5)
+    j cont_init_col
 
-print_coluna:
-    beq $t6, $t0, prox_linha        # terminou a linha atual
+diag_aug:
+    li.s $f1,1.0
+    s.s $f1,0($t5)
 
-    #índice
-    mul $t7, $t5, $t0   
-    add $t7, $t7, $t6   # t7 = (t5*t0) + t6
-    mul $t8, $t7, 4
-    la $t9, matriz
-    add $t9, $t9, $t8
-    lw $a0, 0($t9)
+cont_init_col:
+    addi $t2,$t2,1
+    j init_col
 
-    # print num inteiro
-    li $v0, 1
+next_row_init:
+    addi $t1,$t1,1
+    j init_row
+
+# ======================
+# PRINT HEADER E MATRIZES
+# ======================
+print_header_and_matrices:
+    li $v0,4
+    la $a0,txt_head
     syscall
 
-    # print do espaço
+    jal print_matriz_original
+
+    jal gauss_jordan_aug
+
+    # imprimir inversa
+    jal print_inverse
+
+    li $v0,10
+    syscall
+
+# ======================
+# PRINT MATRIZ
+# ======================
+
+# ======================
+# IMPRIME MATRIZ ORIGINAL
+# ======================
+print_matriz_original:
+    li $t1,0            # linha
+print_row_orig:
+    beq $t1,$t0, ret_print_orig
+    li $t2,0            # coluna
+
+print_orig_col2:
+    beq $t2,$t0, print_space_orig
+    la $t3, orig
+    mul $t4,$t1,$t0
+    add $t4,$t4,$t2
+    sll $t4,$t4,2
+    add $t5,$t3,$t4
+    l.s $f12,0($t5)
+    li $v0,2
+    syscall
+    li $v0,4
+    la $a0,espaco
+    syscall
+    addi $t2,$t2,1
+    j print_orig_col2
+
+print_space_orig:
+    li $v0,4
+    la $a0,espaco
+    syscall
+    li $t2,0
+
+    # imprimir espaço antes da inversa (colunas da parte inversa serão impressas depois)
+    li $v0,4
+    la $a0,espaco
+    syscall
+
+    li $v0,4
+    la $a0,enter
+    syscall
+    addi $t1,$t1,1
+    j print_row_orig
+
+ret_print_orig:
+    jr $ra
+
+
+# ======================
+# IMPRIME INVERSA (direita da augmentada)
+# ======================
+print_inverse:
+    # $t0 = n ; $t1 = totalCols = 2*n
+    sll $t1, $t0, 1
+    # linha
+    li $t2, 0
+print_inv_row:
+    beq $t2, $t0, ret_print_inv
+    # coluna da inversa: col = n .. 2n-1
+    li $t3, 0
+print_inv_col:
+    beq $t3, $t0, end_print_inv_cols
+    la $t4, aug
+    mul $t5, $t2, $t1    # row * totalCols
+    add $t5, $t5, $t3
+    add $t5, $t5, $t0    # + n to shift to right half
+    sll $t5, $t5, 2
+    add $t6, $t4, $t5
+    l.s $f12, 0($t6)
+    li $v0, 2
+    syscall
     li $v0, 4
     la $a0, espaco
     syscall
+    addi $t3, $t3, 1
+    j print_inv_col
 
-    addi $t6, $t6, 1
-    j print_coluna
-
-prox_linha:
-    li $v0, 4
-    la $a0, enter
+end_print_inv_cols:
+    li $v0,4
+    la $a0,enter
     syscall
-    addi $t5, $t5, 1
-    j print_linha
+    addi $t2, $t2, 1
+    j print_inv_row
 
-fim:
-    li $v0, 10
+ret_print_inv:
+    jr $ra
+
+
+# ======================
+# GAUSS-JORDAN NA MATRIZ AUMENTADA
+# ======================
+gauss_jordan_aug:
+    # $t0 = n
+    # $tcols = 2*n (usaremos $t1)
+    sll $t1, $t0, 1      # t1 = 2*n
+
+    li $t2, 0            # pivot row index
+gj_outer2:
+    beq $t2, $t0, gj_done2
+
+    # carregar pivot = aug[t2][t2]
+    la $t3, aug
+    mul $t4, $t2, $t1    # row * totalCols
+    add $t4, $t4, $t2    # + col (pivot col)
+    sll $t4, $t4, 2
+    add $t5, $t3, $t4
+    l.s $f0, 0($t5)
+
+    li.s $f1, 0.0
+    c.eq.s $f0, $f1
+    bc1f pivot_ok2
+
+    # procurar linha abaixo com pivot não-zero
+    addi $t6, $t2, 1
+find_row2:
+    bge $t6, $t0, singular_matrix
+    la $t3, aug
+    mul $t4, $t6, $t1
+    add $t4, $t4, $t2
+    sll $t4, $t4, 2
+    add $t5, $t3, $t4
+    l.s $f0, 0($t5)
+    li.s $f1, 0.0
+    c.eq.s $f0, $f1
+    bc1t next_candidate2
+
+    # swap linhas t2 <-> t6 (troca across t1 colunas)
+    move $a0, $t2
+    move $a1, $t6
+    jal swap_rows_aug
+    j after_swap2
+
+next_candidate2:
+    addi $t6, $t6, 1
+    j find_row2
+
+after_swap2:
+    # recarregar pivot
+    la $t3, aug
+    mul $t4, $t2, $t1
+    add $t4, $t4, $t2
+    sll $t4, $t4, 2
+    add $t5, $t3, $t4
+    l.s $f0, 0($t5)
+
+pivot_ok2:
+    # fator = 1 / pivot
+    li.s $f1, 1.0
+    div.s $f2, $f1, $f0
+
+    # dividir linha pivot por pivot (col 0..t1-1)
+    li $t7, 0
+div_row2:
+    beq $t7, $t1, after_div2
+    la $t3, aug
+    mul $t4, $t2, $t1
+    add $t4, $t4, $t7
+    sll $t4, $t4, 2
+    add $t5, $t3, $t4
+    l.s $f3, 0($t5)
+    mul.s $f3, $f3, $f2
+    s.s $f3, 0($t5)
+    addi $t7, $t7, 1
+    j div_row2
+
+after_div2:
+    # eliminar outras linhas
+    li $t8, 0
+elim_rows2:
+    beq $t8, $t0, next_pivot2
+    beq $t8, $t2, skip_row2
+
+    # fator = aug[t8][t2]
+    la $t3, aug
+    mul $t4, $t8, $t1
+    add $t4, $t4, $t2
+    sll $t4, $t4, 2
+    add $t5, $t3, $t4
+    l.s $f4, 0($t5)
+
+    # para cada coluna c: aug[t8][c] -= fator * aug[t2][c]
+    li $t9, 0
+elim_cols2:
+    beq $t9, $t1, end_cols2
+    la $t3, aug
+    mul $t4, $t8, $t1
+    add $t4, $t4, $t9
+    sll $t4, $t4, 2
+    add $t5, $t3, $t4
+    l.s $f5, 0($t5)
+
+    # pivot row element
+    la $t3, aug
+    mul $t4, $t2, $t1
+    add $t4, $t4, $t9
+    sll $t4, $t4, 2
+    add $t6, $t3, $t4
+    l.s $f6, 0($t6)
+
+    mul.s $f7, $f4, $f6
+    sub.s $f5, $f5, $f7
+    s.s $f5, 0($t5)
+
+    addi $t9, $t9, 1
+    j elim_cols2
+
+end_cols2:
+    addi $t8, $t8, 1
+    j elim_rows2
+
+skip_row2:
+    addi $t8, $t8, 1
+    j elim_rows2
+
+next_pivot2:
+    addi $t2, $t2, 1
+    j gj_outer2
+
+gj_done2:
+    jr $ra
+
+    
+
+
+# Swap rows in augmented matrix: arguments in $a0 = r1, $a1 = r2
+swap_rows_aug:
+    # $t1 = total columns (2*n) ; recompute
+    sll $t1, $t0, 1
+    li $t4, 0
+swap_loop_aug:
+    beq $t4, $t1, swap_done_aug
+
+    la $t5, aug
+    mul $t6, $a0, $t1
+    add $t6, $t6, $t4
+    sll $t6, $t6, 2
+    add $t7, $t5, $t6
+    l.s $f0, 0($t7)
+
+    la $t5, aug
+    mul $t6, $a1, $t1
+    add $t6, $t6, $t4
+    sll $t6, $t6, 2
+    add $t8, $t5, $t6
+    l.s $f1, 0($t8)
+
+    s.s $f1, 0($t7)
+    s.s $f0, 0($t8)
+
+    addi $t4, $t4, 1
+    j swap_loop_aug
+
+swap_done_aug:
+    jr $ra
+
+# ======================
+# MATRIZ SINGULAR
+# ======================
+singular_matrix:
+    li $v0,4
+    la $a0,msg_notinv
+    syscall
+    li $v0,10
     syscall
