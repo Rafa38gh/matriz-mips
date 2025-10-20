@@ -38,7 +38,31 @@ main:
     li $t1, 10
     bgt $t0, $t1, erro_n
 
+    # Ler matriz
     jal ler_elements
+    jal cria_identidade
+    
+    # Print do cabeçalho
+    li $v0, 4
+    la $a0, txt_cabecalho
+    syscall
+
+    # Print matriz original
+    li $v0,4
+    la $a0, txt_orig_header
+    syscall
+    jal print_matriz_original
+
+    # executar gauss-jordan
+    jal gauss_jordan
+
+    # Print inversa
+    li $v0,4
+    la $a0, txt_inv_header
+    syscall
+    jal print_inversa
+
+    j fim
 
 erro_n:
     li $v0, 4
@@ -58,7 +82,7 @@ ler_elements:
     mul $t2, $t0, $t0         # t2 = total elementos
 
 ler_loop:   # $f0 = valor lido, $t1 = index, $t0 = n, $t7 = linha, $t8 = coluna
-    beq $t1, $t2, cria_identidade
+    beq $t1, $t2, ret_leitura
 
     li $v0, 6            # ler float, valor em $f0
     syscall           
@@ -90,6 +114,9 @@ ler_loop:   # $f0 = valor lido, $t1 = index, $t0 = n, $t7 = linha, $t8 = coluna
     addi $t1, $t1, 1
     j ler_loop
 
+ret_leitura:
+    jr $ra
+
 # ======================
 # CRIAR MATRIZ IDENTIDADE
 # ======================
@@ -97,7 +124,7 @@ cria_identidade:
     # Criar identidade na parte direita da matriz aumentada
     li $t1, 0              # linha
 init_linha:
-    beq $t1,$t0, print_matriz
+    beq $t1,$t0, ret_identidade
     li $t2, 0             # coluna
 init_col:
     beq $t2, $t0, prox_linha
@@ -127,46 +154,20 @@ prox_linha:
     addi $t1,$t1,1
     j init_linha
 
-# ======================
-# PRINT DAS MATRIZES
-# ======================
-print_matriz:
-    # Print do cabeçalho
-    li $v0,4
-    la $a0,txt_cabecalho
-    syscall
+ret_identidade:
+    jr $ra
 
-    # Print matriz original
-    li $v0,4
-    la $a0, txt_orig_header
-    syscall
-    jal print_matriz_original
-
-    # executar gauss-jordan
-    jal gauss_jordan_aug
-
-    # Print inversa
-    li $v0,4
-    la $a0, txt_inv_header
-    syscall
-    jal print_inverse
-
-    j fim
-
-# ======================
-# PRINT MATRIZ
-# ======================
 
 # ======================
 # IMPRIME MATRIZ ORIGINAL
 # ======================
 print_matriz_original:
-    li $t1,0            # linha
-print_row_orig:
-    beq $t1,$t0, ret_print_orig
+    li $t1, 0            # linha
+print_linha_orig:
+    beq $t1, $t0, ret_print_orig
     li $t2,0            # coluna
 
-print_orig_col2:
+print_orig_col:
     beq $t2,$t0, print_space_orig
     la $t3, orig
     mul $t4,$t1,$t0
@@ -180,56 +181,56 @@ print_orig_col2:
     la $a0,espaco
     syscall
     addi $t2,$t2,1
-    j print_orig_col2
+    j print_orig_col
 
 print_space_orig:
-    li $v0,4
-    la $a0,espaco
+    li $v0, 4
+    la $a0, espaco
     syscall
-    li $t2,0
+    li $t2, 0
 
-    # imprimir espaço antes da inversa (colunas da parte inversa serão impressas depois)
-    li $v0,4
-    la $a0,espaco
+    # imprimir espaço antes da inversa
+    li $v0, 4
+    la $a0, espaco
     syscall
 
-    li $v0,4
-    la $a0,enter
+    li $v0, 4
+    la $a0, enter
     syscall
-    addi $t1,$t1,1
-    j print_row_orig
+    addi $t1, $t1, 1
+    j print_linha_orig
 
 ret_print_orig:
     jr $ra
 
 
 # ======================
-# IMPRIME INVERSA (direita da augmentada)
+# IMPRIME INVERSA
 # ======================
-print_inverse:
-    # $t0 = n ; $t1 = totalCols = 2*n
+print_inversa:
+    # $t0 = n, $t1 = 2*n
     sll $t1, $t0, 1
-    # linha
-    li $t2, 0
-print_inv_row:
+    li $t2, 0           # linha
+
+print_inv_linha:
     beq $t2, $t0, ret_print_inv
-    # coluna da inversa: col = n .. 2n-1
-    li $t3, 0
+    li $t3, 0           # coluna
+
 print_inv_col:
     beq $t3, $t0, end_print_inv_cols
     la $t4, aug
-    mul $t5, $t2, $t1    # row * totalCols
+    mul $t5, $t2, $t1    # linha * colunas
     add $t5, $t5, $t3
-    add $t5, $t5, $t0    # + n to shift to right half
-    sll $t5, $t5, 2
+    add $t5, $t5, $t0    # pega a parte direita da matriz
+    sll $t5, $t5, 2      # byte offset
     add $t6, $t4, $t5
     l.s $f12, 0($t6)
-    li $v0, 2
+    li $v0, 2           # print float
     syscall
-    li $v0, 4
+    li $v0, 4           # print espaço
     la $a0, espaco
     syscall
-    addi $t3, $t3, 1
+    addi $t3, $t3, 1    # coluna + 1 
     j print_inv_col
 
 end_print_inv_cols:
@@ -237,40 +238,39 @@ end_print_inv_cols:
     la $a0,enter
     syscall
     addi $t2, $t2, 1
-    j print_inv_row
+    j print_inv_linha
 
 ret_print_inv:
     jr $ra
 
 
 # ======================
-# GAUSS-JORDAN NA MATRIZ AUMENTADA
+# GAUSS-JORDAN
 # ======================
-gauss_jordan_aug:
-    # $t0 = n
-    # $tcols = 2*n (usaremos $t1)
+gauss_jordan:
+    # $t0 = n, $t1 = 2*n
     sll $t1, $t0, 1      # t1 = 2*n
 
-    li $t2, 0            # pivot row index
-gj_outer2:
-    beq $t2, $t0, gj_done2
+    li $t2, 0            # índice da linha do pivot
+gj_fora:
+    beq $t2, $t0, ret_gj
 
     # carregar pivot = aug[t2][t2]
     la $t3, aug
-    mul $t4, $t2, $t1    # row * totalCols
-    add $t4, $t4, $t2    # + col (pivot col)
-    sll $t4, $t4, 2
+    mul $t4, $t2, $t1    # posição da linha do pivot
+    add $t4, $t4, $t2    # + col pivot
+    sll $t4, $t4, 2      # byte offset
     add $t5, $t3, $t4
     l.s $f0, 0($t5)
 
-    li.s $f1, 0.0
+    li.s $f1, 0.0       # compara pivot com 0
     c.eq.s $f0, $f1
-    bc1f pivot_ok2
+    bc1f pivot_ok       # pivot != 0, continuar
 
-    # procurar linha abaixo com pivot não-zero
+    # Pegar linha abaixo (pivot = 0)
     addi $t6, $t2, 1
-find_row2:
-    bge $t6, $t0, singular_matrix
+procura_linha:                      # procura linha com valor != 0
+    bge $t6, $t0, matriz_singular   # sem linha válida
     la $t3, aug
     mul $t4, $t6, $t1
     add $t4, $t4, $t2
@@ -279,36 +279,36 @@ find_row2:
     l.s $f0, 0($t5)
     li.s $f1, 0.0
     c.eq.s $f0, $f1
-    bc1t next_candidate2
+    bc1t gj_prox_linha
 
-    # swap linhas t2 <-> t6 (troca across t1 colunas)
+    # troca linhas $t2 com $t6
     move $a0, $t2
     move $a1, $t6
-    jal swap_rows_aug
-    j after_swap2
+    jal troca_linhas                # troca linha para uma válida
+    j recarrega_pivot
 
-next_candidate2:
+gj_prox_linha:
     addi $t6, $t6, 1
-    j find_row2
+    j procura_linha
 
-after_swap2:
+recarrega_pivot:
     # recarregar pivot
     la $t3, aug
-    mul $t4, $t2, $t1
+    mul $t4, $t2, $t1       # posição da linha do pivot
     add $t4, $t4, $t2
     sll $t4, $t4, 2
     add $t5, $t3, $t4
     l.s $f0, 0($t5)
 
-pivot_ok2:
+pivot_ok:                   # calcula a inversa do pivot
     # fator = 1 / pivot
     li.s $f1, 1.0
     div.s $f2, $f1, $f0
 
-    # dividir linha pivot por pivot (col 0..t1-1)
+    # dividir linha pivot
     li $t7, 0
-div_row2:
-    beq $t7, $t1, after_div2
+div_linha_pivot:
+    beq $t7, $t1, fim_div
     la $t3, aug
     mul $t4, $t2, $t1
     add $t4, $t4, $t7
@@ -318,14 +318,14 @@ div_row2:
     mul.s $f3, $f3, $f2
     s.s $f3, 0($t5)
     addi $t7, $t7, 1
-    j div_row2
+    j div_linha_pivot
 
-after_div2:
+fim_div:
     # eliminar outras linhas
     li $t8, 0
-elim_rows2:
-    beq $t8, $t0, next_pivot2
-    beq $t8, $t2, skip_row2
+elim_linhas:
+    beq $t8, $t0, prox_pivot
+    beq $t8, $t2, pular_linha
 
     # fator = aug[t8][t2]
     la $t3, aug
@@ -337,8 +337,8 @@ elim_rows2:
 
     # para cada coluna c: aug[t8][c] -= fator * aug[t2][c]
     li $t9, 0
-elim_cols2:
-    beq $t9, $t1, end_cols2
+elim_colunas:
+    beq $t9, $t1, fim_cols
     la $t3, aug
     mul $t4, $t8, $t1
     add $t4, $t4, $t9
@@ -346,7 +346,6 @@ elim_cols2:
     add $t5, $t3, $t4
     l.s $f5, 0($t5)
 
-    # pivot row element
     la $t3, aug
     mul $t4, $t2, $t1
     add $t4, $t4, $t9
@@ -359,33 +358,30 @@ elim_cols2:
     s.s $f5, 0($t5)
 
     addi $t9, $t9, 1
-    j elim_cols2
+    j elim_colunas
 
-end_cols2:
+fim_cols:
     addi $t8, $t8, 1
-    j elim_rows2
+    j elim_linhas
 
-skip_row2:
+pular_linha:
     addi $t8, $t8, 1
-    j elim_rows2
+    j elim_linhas
 
-next_pivot2:
+prox_pivot:
     addi $t2, $t2, 1
-    j gj_outer2
+    j gj_fora
 
-gj_done2:
+ret_gj:
     jr $ra
 
-    
 
-
-# Swap rows in augmented matrix: arguments in $a0 = r1, $a1 = r2
-swap_rows_aug:
-    # $t1 = total columns (2*n) ; recompute
+troca_linhas:                           # $a0 = linha1, $a1 = linha2
+    # $t1 = total de colunas (2*n)
     sll $t1, $t0, 1
     li $t4, 0
-swap_loop_aug:
-    beq $t4, $t1, swap_done_aug
+troca_loop:
+    beq $t4, $t1, ret_troca_linhas
 
     la $t5, aug
     mul $t6, $a0, $t1
@@ -405,15 +401,15 @@ swap_loop_aug:
     s.s $f0, 0($t8)
 
     addi $t4, $t4, 1
-    j swap_loop_aug
+    j troca_loop
 
-swap_done_aug:
+ret_troca_linhas:
     jr $ra
 
 # ======================
 # MATRIZ SINGULAR
 # ======================
-singular_matrix:
+matriz_singular:
     li $v0,4
     la $a0,err_inv
     syscall
